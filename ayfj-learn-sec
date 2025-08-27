@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+# ayfj-utils.py
+# AYFJ Group Utility Toolkit
+# Author: aaayafuj (Boss of AYFJ)
+# Educational only — shows LEGAL vs ILLEGAL usage of utilities.
+
+import os
+import sys
+import platform
+import time
+
+def legal_utils():
+    print("\n✅ LEGAL UTILS")
+    print("- File manager (rename, move, backup your own files)")
+    print("- System info display (CPU, RAM, OS details)")
+    print("- Network tools (ping, traceroute, speed test)")
+    print("- Data converters (JSON <-> CSV, text cleanup)")
+    print("- Educational scripts to learn Python, Linux, or AI basics")
+    print("- Ethical security research in a lab/CTF environment\n")
+
+def illegal_utils():
+    print("\n❌ ILLEGAL UTILS (DO NOT DO)")
+    print("- Account brute-forcers or password crackers without permission")
+    print("- Malware, ransomware, or spyware tools")
+    print("- Bots for fake followers/likes or spamming")
+    print("- Data stealers or keyloggers")
+    print("- Tools to bypass security controls without authorization")
+    print("- Anything that causes damage, theft, or violates laws\n")
+
+def system_info():
+    print("📊 SYSTEM INFO")
+    print("OS:", platform.system(), platform.release())
+    print("Python version:", sys.version.split()[0])
+    print("User:", os.getenv("USER") or os.getenv("USERNAME"))
+    print()
+
+def main():
+    print("=== AYFJ Utils ===")
+    print("By: aaayafuj | Group: AYFJ")
+    print("Utility toolkit for LEGAL learning and research.\n")
+    time.sleep(1)
+
+    system_info()
+    legal_utils()
+    illegal_utils()
+
+    print("⚖️ Rule of thumb: If it ORGANIZES, EDUCATES, or TESTS safely → LEGAL.")
+    print("🚫 If it DAMAGES, STEALS, or ABUSES → ILLEGAL.\n")
+
+if __name__ == "__main__":
+    main()
