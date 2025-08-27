@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+# ayfj-ai-lab.py
+# Educational script to show LEGAL vs ILLEGAL use of AI tools
+
+import sys
+import time
+
+def legal_use():
+    print("\n✅ LEGAL USE EXAMPLES")
+    print("- Building your own AI assistant for productivity")
+    print("- Automating personal tasks (renaming files, organizing data)")
+    print("- Researching AI models for education and open-source projects")
+    print("- Creating chatbots, art, or music with your own datasets")
+    print("- Security research in a controlled, ethical environment (CTFs, labs)")
+    print("- Using AI to detect malware, phishing, or system weaknesses legally")
+    print()
+
+def illegal_use():
+    print("\n❌ ILLEGAL USE EXAMPLES (DO NOT DO)")
+    print("- Spamming, flooding, or attacking other people's servers")
+    print("- Creating or selling fake followers/likes for social media")
+    print("- Hacking accounts without permission")
+    print("- Distributing pirated or leaked AI models/software")
+    print("- Using AI to generate malware or ransomware for real-world attacks")
+    print("- Identity theft, phishing, or fraud using AI")
+    print()
+
+def main():
+    print("=== AYFJ AI LAB ===")
+    print("Boss: aaayafuj | Group: AYFJ")
+    print("This lab shows the difference between LEGAL vs ILLEGAL AI use.")
+    time.sleep(1)
+
+    legal_use()
+    illegal_use()
+
+    print("⚖️ Rule of thumb: If it helps you LEARN, CREATE, or PROTECT, it's legal.")
+    print("🚫 If it causes HARM, THEFT, or FRAUD, it's illegal.\n")
+
+if __name__ == "__main__":
+    main()
