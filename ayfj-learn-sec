@@ -1,51 +1,40 @@
 #!/usr/bin/env python3
-# ayfj-utils.py
-# AYFJ Group Utility Toolkit
-# Author: aaayafuj (Boss of AYFJ)
-# Educational only — shows LEGAL vs ILLEGAL usage of utilities.
+# ayfj-learn-sec.py
+# AYFJ Learn Security Lab
+# Author: aaayafuj | Boss of AYFJ
+# Purpose: Educational security toolkit showing LEGAL vs ILLEGAL usage.
 
-import os
-import sys
-import platform
 import time
 
-def legal_utils():
-    print("\n✅ LEGAL UTILS")
-    print("- File manager (rename, move, backup your own files)")
-    print("- System info display (CPU, RAM, OS details)")
-    print("- Network tools (ping, traceroute, speed test)")
-    print("- Data converters (JSON <-> CSV, text cleanup)")
-    print("- Educational scripts to learn Python, Linux, or AI basics")
-    print("- Ethical security research in a lab/CTF environment\n")
+def legal_security_learning():
+    print("\n✅ LEGAL SECURITY LEARNING")
+    print("- Practicing in Capture The Flag (CTF) challenges")
+    print("- Setting up your own vulnerable lab (DVWA, Metasploitable, etc.)")
+    print("- Using nmap to scan your own systems or lab environment")
+    print("- Learning about encryption, hashing, and secure coding")
+    print("- Studying malware samples safely in a sandbox")
+    print("- Doing penetration testing with written permission\n")
 
-def illegal_utils():
-    print("\n❌ ILLEGAL UTILS (DO NOT DO)")
-    print("- Account brute-forcers or password crackers without permission")
-    print("- Malware, ransomware, or spyware tools")
-    print("- Bots for fake followers/likes or spamming")
-    print("- Data stealers or keyloggers")
-    print("- Tools to bypass security controls without authorization")
-    print("- Anything that causes damage, theft, or violates laws\n")
-
-def system_info():
-    print("📊 SYSTEM INFO")
-    print("OS:", platform.system(), platform.release())
-    print("Python version:", sys.version.split()[0])
-    print("User:", os.getenv("USER") or os.getenv("USERNAME"))
-    print()
+def illegal_security_usage():
+    print("\n❌ ILLEGAL SECURITY USAGE (DO NOT DO)")
+    print("- Scanning or hacking networks you don’t own or have permission for")
+    print("- Breaking into accounts, servers, or devices illegally")
+    print("- Selling or using leaked data or AI models")
+    print("- Writing ransomware or deploying malware in real-world systems")
+    print("- Phishing, identity theft, or fraud with AI/security tools")
+    print("- Social engineering to steal access without consent\n")
 
 def main():
-    print("=== AYFJ Utils ===")
-    print("By: aaayafuj | Group: AYFJ")
-    print("Utility toolkit for LEGAL learning and research.\n")
+    print("=== AYFJ Learn-Sec ===")
+    print("Boss: aaayafuj | Group: AYFJ")
+    print("Educational security lab for learning LEGAL vs ILLEGAL practices.\n")
     time.sleep(1)
 
-    system_info()
-    legal_utils()
-    illegal_utils()
+    legal_security_learning()
+    illegal_security_usage()
 
-    print("⚖️ Rule of thumb: If it ORGANIZES, EDUCATES, or TESTS safely → LEGAL.")
-    print("🚫 If it DAMAGES, STEALS, or ABUSES → ILLEGAL.\n")
+    print("⚖️ Rule of thumb: Learn by BUILDING & PROTECTING → LEGAL.")
+    print("🚫 Attacking, STEALING, or ABUSING → ILLEGAL.\n")
 
 if __name__ == "__main__":
     main()
