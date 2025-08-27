@@ -1,0 +1,400 @@
+import React, { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { Search, Github, FileText, Link as LinkIcon, Download, Upload, FolderGit2, Loader2, ExternalLink, Trash2, Globe2, ShieldAlert, XCircle, RefreshCw } from "lucide-react";
+
+// --- Helper UI bits (minimal shadcn-like styles with Tailwind) ---
+const Card = ({ children, className = "" }) => (
+  <div className={`rounded-2xl shadow-lg bg-white/80 dark:bg-zinc-900/80 backdrop-blur p-5 border border-zinc-200 dark:border-zinc-800 ${className}`}>{children}</div>
+);
+const Button = ({ children, className = "", ...props }) => (
+  <button className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 ${className}`} {...props}>{children}</button>
+);
+const Input = ({ className = "", ...props }) => (
+  <input className={`w-full rounded-2xl px-4 py-2 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${className}`} {...props} />
+);
+const Badge = ({ children }) => (<span className="text-xs rounded-full px-2 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{children}</span>);
+
+// --- Storage safety helpers ---
+const MAX_LOCALSTORAGE_BYTES = 400 * 1024; // ~400KB cap for persisted payload (conservative)
+const MAX_NOTES_PERSIST_BYTES = 200 * 1024; // notes portion stored to localStorage (preview only)
+const MAX_NOTES_MEMORY_BYTES = 2 * 1024 * 1024; // 2MB kept in memory to avoid perf issues
+const MAX_TXT_LINKS = 300; // limit links to avoid bloat
+
+const bytes = (str) => new Blob([str || ""]).size;
+const truncateToBytes = (str, limit) => {
+  if (!str) return str;
+  if (bytes(str) <= limit) return str;
+  // fast path guess then tighten
+  let hi = Math.min(str.length, Math.floor((limit / bytes(str)) * str.length) + 16);
+  let lo = 0, best = 0;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const chunk = str.slice(0, mid);
+    const b = bytes(chunk);
+    if (b <= limit) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return str.slice(0, best);
+};
+
+const buildPersistState = ({ query, txtLinks, txtNotes }) => {
+  // Trim links and preview notes for persistence
+  const trimmedLinks = Array.from(new Set([...(txtLinks || [])])).slice(0, MAX_TXT_LINKS);
+  let previewNotes = truncateToBytes(txtNotes, MAX_NOTES_PERSIST_BYTES);
+  const truncatedPreview = bytes(txtNotes) > bytes(previewNotes);
+  const candidate = JSON.stringify({ query, txtLinks: trimmedLinks, txtNotes: previewNotes, _previewTruncated: truncatedPreview });
+  // If payload too large, drop notes entirely
+  if (bytes(candidate) > MAX_LOCALSTORAGE_BYTES) {
+    return JSON.stringify({ query, txtLinks: trimmedLinks, txtNotes: "", _previewTruncated: true });
+  }
+  return candidate;
+};
+
+const safeLocalGet = (key) => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+const safeLocalSet = (key, value) => {
+  try { localStorage.setItem(key, value); return { ok: true }; }
+  catch (e) { return { ok: false, error: e }; }
+};
+const safeLocalRemove = (key) => { try { localStorage.removeItem(key); } catch {} };
+
+// --- GitHub fetchers ---
+async function fetchGitHubUser(username) {
+  const res = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}`);
+  if (!res.ok) throw new Error(`GitHub user not found: ${username}`);
+  return res.json();
+}
+async function fetchGitHubRepos(username) {
+  const res = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&sort=updated`);
+  if (!res.ok) throw new Error(`GitHub repos not found: ${username}`);
+  return res.json();
+}
+
+// --- Optional: Web search placeholder (requires API key) ---
+async function fetchWebResults(query, api = { url: "", key: "", paramKey: "api_key" }) {
+  if (!api.url || !api.key) {
+    return { provider: "local", items: [] };
+  }
+  const url = new URL(api.url);
+  url.searchParams.set("q", query);
+  url.searchParams.set(api.paramKey || "api_key", api.key);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Web search failed");
+  const data = await res.json();
+  const items = (data.items || data.organic_results || []).slice(0, 10).map((it) => ({
+    title: it.title || it.name || it.snippet || "Result",
+    link: it.link || it.url || it.formattedUrl,
+    snippet: it.snippet || it.description || ""
+  })).filter(x => x.link);
+  return { provider: api.url, items };
+}
+
+export default function App() {
+  const [query, setQuery] = useState("aaayafuj");
+  const [loading, setLoading] = useState(false);
+  const [ghUser, setGhUser] = useState(null);
+  const [ghRepos, setGhRepos] = useState([]);
+  const [txtLinks, setTxtLinks] = useState([]);
+  const [txtNotes, setTxtNotes] = useState("");
+  const [webResults, setWebResults] = useState([]);
+  const [error, setError] = useState("");
+  const [storageWarning, setStorageWarning] = useState("");
+  const [diagOutput, setDiagOutput] = useState("");
+  const fileRef = useRef(null);
+  const saveTimer = useRef(null);
+
+  // Load persisted state (safe)
+  useEffect(() => {
+    const saved = safeLocalGet("ayfj-finder");
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        setQuery(s.query || "aaayafuj");
+        setTxtLinks(s.txtLinks || []);
+        setTxtNotes(s.txtNotes || "");
+        if (s._previewTruncated) setStorageWarning("Only a preview of notes was saved locally due to storage limits.");
+      } catch {
+        setStorageWarning("Couldn't read saved data — storage may be blocked or corrupted.");
+      }
+    }
+  }, []);
+
+  // Persist state with debounce + size checks
+  useEffect(() => {
+    // Avoid saving on every keystroke; debounce 600ms
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const payload = buildPersistState({ query, txtLinks, txtNotes });
+      const res = safeLocalSet("ayfj-finder", payload);
+      if (!res.ok) {
+        // Fallback: save bare minimum
+        const minimal = JSON.stringify({ query, txtLinks: [], txtNotes: "", _previewTruncated: true });
+        const alt = safeLocalSet("ayfj-finder", minimal);
+        setStorageWarning("Local save reduced to minimal due to storage quota. Use Export to keep a full backup.");
+        if (!alt.ok) {
+          setStorageWarning("Local storage is unavailable. Data won't persist — please use Export.");
+        }
+      }
+    }, 600);
+    return () => saveTimer.current && clearTimeout(saveTimer.current);
+  }, [query, txtLinks, txtNotes]);
+
+  const handleSearch = async () => {
+    setError("");
+    setLoading(true);
+    setGhUser(null);
+    setGhRepos([]);
+    setWebResults([]);
+    try {
+      const [user, repos] = await Promise.all([
+        fetchGitHubUser(query).catch(() => null),
+        fetchGitHubRepos(query).catch(() => [])
+      ]);
+      setGhUser(user);
+      setGhRepos(repos);
+
+      // Optional web search — add your API URL + KEY to enable
+      const API = { url: "", key: "", paramKey: "api_key" }; // <- fill in later
+      const web = await fetchWebResults(query + " aaayafuj AYFJ", API).catch(() => ({ items: [] }));
+      setWebResults(web.items || []);
+    } catch (e) {
+      setError(e.message || "Search failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    const text = await file.text();
+    const rawBytes = bytes(text);
+    let usedText = text;
+    let truncated = false;
+    if (rawBytes > MAX_NOTES_MEMORY_BYTES) {
+      usedText = truncateToBytes(text, MAX_NOTES_MEMORY_BYTES);
+      truncated = true;
+    }
+    const links = extractLinks(usedText);
+    setTxtLinks((prev) => Array.from(new Set([...(prev || []), ...links])).slice(0, MAX_TXT_LINKS));
+    setTxtNotes((prev) => [prev, usedText].filter(Boolean).join("\n\n---\n\n"));
+    if (truncated) setStorageWarning(`Imported notes were truncated to ~${Math.round(MAX_NOTES_MEMORY_BYTES/1024)}KB for performance.`);
+  };
+
+  const exportJSON = () => {
+    const payload = {
+      query,
+      timestamp: new Date().toISOString(),
+      github: { user: ghUser, repos: ghRepos },
+      text: { links: txtLinks, notes: txtNotes },
+      web: webResults,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `ayfj-finder-${query}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearTxt = () => { setTxtLinks([]); setTxtNotes(""); };
+  const clearLocal = () => { safeLocalRemove("ayfj-finder"); setStorageWarning("Local save cleared."); };
+
+  // Diagnostics / Test Cases for storage behavior
+  const runStorageTests = () => {
+    const results = [];
+    const tryStore = (label, sizeKB) => {
+      const key = `__test_${label}`;
+      const str = "a".repeat(sizeKB * 1024);
+      const payload = JSON.stringify({ str });
+      const res = safeLocalSet(key, payload);
+      results.push(`${label} (${sizeKB}KB): ${res.ok ? "OK" : "FAIL"}`);
+      safeLocalRemove(key);
+    };
+    tryStore("Small", 10); // should pass
+    tryStore("Medium", 300); // should pass in most browsers
+    tryStore("Large", 1024); // may fail (1MB JSON)
+    setDiagOutput(results.join("\n"));
+  };
+
+  useEffect(() => { handleSearch(); }, []);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 text-zinc-900 dark:text-zinc-100">
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Globe2 className="w-7 h-7"/>
+            <h1 className="text-2xl font-bold">AYFJ Finder</h1>
+            <Badge>aaayafuj</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={exportJSON}><Download className="w-4 h-4"/>Export</Button>
+            <Button onClick={clearLocal}><XCircle className="w-4 h-4"/>Clear Local Save</Button>
+            <Button onClick={runStorageTests}><RefreshCw className="w-4 h-4"/>Run Storage Test</Button>
+          </div>
+        </header>
+
+        {storageWarning && (
+          <Card className="border-amber-300 bg-amber-50/80 dark:bg-amber-900/20">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 mt-0.5"/>
+              <div>
+                <p className="text-sm">{storageWarning}</p>
+                <p className="text-xs opacity-70 mt-1">Tip: Use <strong>Export</strong> to keep a full backup of notes. LocalStorage is limited per browser/site.</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Search Bar */}
+        <Card>
+          <div className="grid md:grid-cols-3 gap-3 items-center">
+            <div className="md:col-span-2 flex items-center gap-2">
+              <Search className="w-5 h-5"/>
+              <Input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="GitHub username or keyword (e.g., aaayafuj)" />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSearch} className="w-full">{loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <><Search className="w-4 h-4"/> Search</>}</Button>
+              <Button onClick={()=>fileRef.current?.click()} className="w-full"><Upload className="w-4 h-4"/> Import .txt</Button>
+              <input ref={fileRef} type="file" accept=".txt" className="hidden" onChange={(e)=>handleFile(e.target.files?.[0])} />
+            </div>
+          </div>
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        </Card>
+
+        {/* Content Grid */}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Column 1: GitHub Profile */}
+          <div className="space-y-6">
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <Github className="w-5 h-5"/>
+                <h2 className="text-lg font-semibold">GitHub Profile</h2>
+              </div>
+              {!ghUser ? (
+                <p className="text-sm opacity-80">No profile found or not loaded yet.</p>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <img src={ghUser.avatar_url} alt="avatar" className="w-16 h-16 rounded-full"/>
+                  <div>
+                    <a href={ghUser.html_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline flex items-center gap-1">{ghUser.login} <ExternalLink className="w-3 h-3"/></a>
+                    <p className="text-sm opacity-80">{ghUser.bio || "No bio"}</p>
+                    <div className="flex gap-3 text-sm opacity-80 mt-1">
+                      <span>Repos: {ghUser.public_repos}</span>
+                      <span>Followers: {ghUser.followers}</span>
+                      <span>Following: {ghUser.following}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <FolderGit2 className="w-5 h-5"/>
+                <h2 className="text-lg font-semibold">Repositories</h2>
+              </div>
+              <div className="space-y-3 max-h-[420px] overflow-auto pr-1">
+                {(ghRepos||[]).slice(0, 20).map(repo => (
+                  <div key={repo.id} className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-3">
+                    <a href={repo.html_url} target="_blank" rel="noreferrer" className="font-medium hover:underline flex items-center gap-1">{repo.name} <ExternalLink className="w-3 h-3"/></a>
+                    <p className="text-sm opacity-80 mt-1 line-clamp-2">{repo.description || "No description"}</p>
+                    <div className="text-xs flex gap-3 mt-2 opacity-70">
+                      <span>★ {repo.stargazers_count}</span>
+                      <span>Ⓕ {repo.forks_count}</span>
+                      <span>Updated: {new Date(repo.updated_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {(!ghRepos || ghRepos.length === 0) && <p className="text-sm opacity-80">No repositories to show.</p>}
+              </div>
+            </Card>
+          </div>
+
+          {/* Column 2: Web Results (optional) + TXT Links */}
+          <div className="space-y-6">
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <Globe2 className="w-5 h-5"/>
+                <h2 className="text-lg font-semibold">Internet Mentions (via API)</h2>
+              </div>
+              {webResults.length === 0 ? (
+                <p className="text-sm opacity-80">Add a web search API in the code to enable this section (SerpAPI, Bing, Google CSE). Results will appear here.</p>
+              ) : (
+                <div className="space-y-3 max-h-[300px] overflow-auto pr-1">
+                  {webResults.map((r, idx) => (
+                    <div key={idx} className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-3">
+                      <a href={r.link} target="_blank" rel="noreferrer" className="font-medium hover:underline flex items-center gap-1">{r.title || r.link} <ExternalLink className="w-3 h-3"/></a>
+                      {r.snippet && <p className="text-sm opacity-80 mt-1 line-clamp-2">{r.snippet}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <LinkIcon className="w-5 h-5"/>
+                <h2 className="text-lg font-semibold">Links from .txt</h2>
+              </div>
+              {txtLinks.length === 0 ? (
+                <p className="text-sm opacity-80">Import a .txt file with URLs (one per line or mixed in text). We'll extract and list them here.</p>
+              ) : (
+                <div className="space-y-3 max-h-[300px] overflow-auto pr-1">
+                  {txtLinks.map((u, i) => (
+                    <div key={u + i} className="flex items-center justify-between gap-3 border border-zinc-200 dark:border-zinc-800 rounded-xl p-3">
+                      <a href={u} target="_blank" rel="noreferrer" className="truncate hover:underline flex-1 flex items-center gap-1">{u} <ExternalLink className="w-3 h-3"/></a>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 flex gap-2">
+                <Button onClick={()=>fileRef.current?.click()}><Upload className="w-4 h-4"/> Add .txt</Button>
+                <Button onClick={clearTxt}><Trash2 className="w-4 h-4"/> Clear</Button>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <ShieldAlert className="w-5 h-5"/>
+                <h2 className="text-lg font-semibold">Diagnostics — Storage Tests</h2>
+              </div>
+              <p className="text-sm opacity-80 mb-3">Verifies that the app safely handles localStorage limits.</p>
+              <div className="flex gap-2 mb-3">
+                <Button onClick={runStorageTests}><RefreshCw className="w-4 h-4"/> Run Tests</Button>
+              </div>
+              <pre className="text-xs bg-zinc-950/60 text-zinc-100 rounded-xl p-3 overflow-auto min-h-[88px]">{diagOutput || "(no test run yet)\nExpected: Small/Medium = OK, Large may FAIL but app stays stable."}</pre>
+            </Card>
+          </div>
+
+          {/* Column 3: Notes */}
+          <div className="space-y-6">
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <FileText className="w-5 h-5"/>
+                <h2 className="text-lg font-semibold">Notes (from .txt)</h2>
+              </div>
+              <textarea value={txtNotes} onChange={(e)=>setTxtNotes(e.target.value)} placeholder="Any text from your .txt will be appended here. You can also type freely." className="w-full h-[460px] rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3"/>
+              <div className="mt-3 text-xs opacity-70">Autosaved locally (preview only if large). Use Export for full backup.</div>
+            </Card>
+          </div>
+        </div>
+
+        <footer className="pt-6 text-xs opacity-70 text-center">
+          Built for <strong>AYFJ Group</strong> — led by <strong>aaayafuj</strong>. GitHub profile search works without keys. Web search requires your API key.
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// --- URL extractor (placed at end to keep file tidy) ---
+function extractLinks(text) {
+  const urlRegex = /(https?:\/\/[^\s)]+)|(www\.[^\s)]+)/gi;
+  const found = new Set();
+  for (const match of text.matchAll(urlRegex)) {
+    const raw = match[0];
+    const url = raw.startsWith("http") ? raw : `https://${raw}`;
+    found.add(url.replace(/[),.;]+$/g, ""));
+  }
+  return Array.from(found);
+}
